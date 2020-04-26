@@ -1,0 +1,88 @@
+//处理虚假唤醒，一般要lambda表达式判断公共数据好不
+//知道不是虚假唤醒，就可以对wait操作的数据进行计数,适时退出。
+#include <iostream>
+#include<thread>
+#include<list>//list顺序操作较vector快
+#include<mutex>
+using namespace std;
+
+class server {
+public:
+	void inlist() {
+		for (int i = 0; i < 100; i++)
+		{
+			cout << "1添加一条请求到list：" << i << "线程id：" << this_thread::get_id() << endl;
+
+			{
+				unique_lock<mutex>tempmut(mut);
+				lst.push_back(i);
+
+				my_cond.notify_one();
+			}
+
+		}
+	};
+
+	void outlist() {
+		int i = 0;
+		while (i++<100){
+				unique_lock<mutex>u_lock(mut);				
+				/*
+				wait此处，处理了虚假唤醒
+				一般wait中要有第二个参数lambda表达式，
+				用来判断要操作的公共数据是否存在。
+				*/
+
+				my_cond.wait(u_lock,
+					[this] {
+						if (!lst.empty())return true;
+
+						return false;
+					}
+				);
+
+				int command = lst.front();
+				lst.pop_front();
+
+				u_lock.unlock();
+
+				cout << "执行：" << command << "线程id：" << this_thread::get_id() << endl;
+		}
+
+	}
+private:
+	list<int>lst;
+	mutex mut;
+	condition_variable my_cond;
+};
+
+
+int main()
+{
+	cout << "主线程" << endl;
+
+	server sv;
+	thread inputthread(&server::inlist, &sv);	//此处传引用避免操作不到sv
+	thread outputthread(&server::outlist, &sv);
+
+	inputthread.join();
+	outputthread.join();
+
+
+	cout << "主程序完毕！！！";//最后执行这句
+	return 0;
+}
+
+//处理100条数据
+输出窗口：
+。。。。。。
+14521添加一条请求到list：
+99线程id：执行：93线程id：1452
+执行：1836094线程id：1452
+执行：
+95线程id：1452
+执行：96线程id：1452
+执行：97线程id：1452
+执行：98线程id：1452
+执行：99线程id：1452
+主程序完毕！！！

@@ -1,0 +1,252 @@
+
+//稀里糊涂的unique_lock<>模板试用
+#include <iostream>
+#include<thread>
+#include<list>//list顺序操作较vector快
+#include<mutex>
+using namespace std;
+
+class server {
+public:
+
+	void inlist() {
+		for (int i = 0; i < 1000000; i++)
+		{
+			cout << "添加..........";
+			{
+				//注意不能先调用mut.lock()；托管的同时会尝试。
+				unique_lock<mutex>tulock(mut, try_to_lock);
+
+				if (tulock.owns_lock() == true) {
+					cout << "添加锁定成功...";
+					lst.push_back(i);
+
+					this_thread::sleep_for(chrono::seconds(5));
+
+					tulock.unlock();//这里暂时退出共享区
+
+					cout << "添加成功" << endl;
+
+					tulock.lock();	//这句自动释放
+				}
+				else {
+
+					this_thread::sleep_for(chrono::seconds(4));
+
+					cout << "添加锁定失败..." <<endl;
+				}				
+				
+			}
+		}
+	};
+	bool  dealout( int &command) {
+		/*
+		这里，前面也不能mut.lock();
+		托管之后，转换为unique对象；
+		但是还没有进行任何操作，只是包装了一下，不用释放；
+		但是也要自己先.lock()
+
+		*/
+		unique_lock<mutex>ulock(mut, defer_lock);
+		//所有权转移
+		unique_lock<mutex>dulock(move(ulock));
+
+		if (dulock.try_lock() == true) {
+			cout << "取出锁定成功...";
+			chrono::milliseconds dur(20000);
+			this_thread::sleep_for(dur);
+
+			if (!lst.empty()) {
+				command = lst.front();
+				lst.pop_front();
+
+				return true;
+			}
+			return false;
+		}
+		else {
+
+			this_thread::sleep_for(chrono::seconds(4));
+			cout << "取出锁定失败...";
+		}
+
+	}
+	void outlist() {
+		for (int i = 0; i < 1000000; i++)
+		{	
+			cout << "取出......";
+			int command = 0;
+			bool flag = dealout(command);//此处传引用，command值被修改。
+
+			if (flag) {
+				cout  << command << "取出成功"  << endl;
+			}
+			else {
+				cout << "取出失败"<< endl;
+			}
+		}
+	}
+private:
+	list<int>lst;
+	mutex mut;
+
+
+};
+
+
+int main()
+{
+	cout << "主线程" << endl;
+
+	server sv;
+	thread inputthread(&server::inlist, &sv);	//此处传引用避免操作不到sv
+	thread outputthread(&server::outlist, &sv);
+	
+	inputthread.join();
+	outputthread.join();
+
+
+	cout << "主程序完毕！！！";//最后执行这句
+	return 0;
+}
+
+
+
+
+//两种方法实现互斥访问资源,保证资源写和写，写和读不同时*******
+//lock_guard<mutex>,mutex**********************
+
+#include <iostream>
+#include<thread>
+#include<list>//list顺序操作较vector快
+#include<mutex>
+using namespace std;
+
+class server {
+public:
+	void inlist() {
+		for (int i = 0; i < 1000000; i++)
+		{
+			cout << "1添加一条请求到list：" << i << "线程id：" << this_thread::get_id() << endl;
+
+			{
+				/*此处使用lock_guard<T>模板创建保姆式锁头，作用域内有效，一个顶两个*/
+				lock_guard<mutex>tempmut(mut);
+				lst.push_back(i);
+			}
+
+		}
+	};
+	bool  dealout( int &command) {
+		mut.lock();//锁1
+		if (!lst.empty()) {
+			command = lst.front();
+			lst.pop_front();
+
+			mut.unlock();
+
+			return true;
+		}
+		mut.unlock();
+
+		return false;
+
+	}
+	void outlist() {
+		for (int i = 0; i < 1000000; i++)
+		{
+			int command = 0;
+			bool flag = dealout(command);//此处传引用，command值被修改。
+
+			if (flag) {
+				cout << "执行：" << command << "线程id：" << this_thread::get_id() << endl;
+			}
+			else {
+				cout << "取出失败....这样子。线程id：" << this_thread::get_id() << endl;
+			}
+		}
+	}
+private:
+	list<int>lst;
+	mutex mut;
+
+};
+
+
+int main()
+{
+	cout << "主线程" << endl;
+
+	server sv;
+	thread inputthread(&server::inlist, &sv);	//此处传引用避免操作不到sv
+	thread outputthread(&server::outlist, &sv);
+	
+	inputthread.join();
+	outputthread.join();
+
+
+	cout << "主程序完毕！！！";//最后执行这句
+	return 0;
+}
+
+
+
+
+
+
+//只读不加限制，会乱了套**************
+//读写不加限制，会出错**********
+
+#include <iostream>
+#include<thread>
+#include<vector>
+using namespace std;
+
+void mk(int i) {
+	cout << "-----执行线程编号:" <<i << endl;
+	//执行语句....
+	//.....
+	cout<< " 结束执行线程编号:" << i << endl;	
+}
+
+
+int main()
+{
+	cout << "主线程" << endl;
+
+	vector<thread>myt;
+	for (int i = 0; i < 10; i++)
+	{
+		myt.push_back(thread(mk, i + 1));
+	}
+	for (int i = 0; i < 10; i++)/*也可以用迭代器*/
+	{
+		myt[i].join();
+	}	
+	cout << "主程序完毕！！！";//最后执行这句
+	return 0;
+}
+
+输出窗口：
+主线程
+-----执行线程编号:-----执行线程编号:2
+ 结束执行线程编号:2
+-----执行线程编号:6
+1
+-----执行线程编号:8
+ 结束执行线程编号:8
+ 结束执行线程编号:6
+-----执行线程编号:-----执行线程编号:9
+ 结束执行线程编号:9
+5
+ 结束执行线程编号:5
+ 结束执行线程编号:1
+-----执行线程编号:3
+ 结束执行线程编号:3
+-----执行线程编号:4
+ 结束执行线程编号:4
+-----执行线程编号:7
+ 结束执行线程编号:7
+-----执行线程编号:10
+ 结束执行线程编号:10
+主程序完毕！！！

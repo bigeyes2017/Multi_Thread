@@ -1,0 +1,100 @@
+//recursive_mutex允许同一个线程多次对某个互斥量进行锁定
+//timed_mutex使得互斥量可以等待一段时间，根据是否拿到锁，进行下一步操作
+它介于比wait等的时间更长，比直接使用互斥量等待更短
+#include <iostream>
+#include<thread>
+#include<list>//list顺序操作较vector快
+#include<mutex>
+using namespace std;
+
+class server {
+public:
+	void inlist() {
+		for (int i = 0; i < 1000000; i++)
+		{
+			cout << "添加请求" << i << endl;
+
+			//this_thread::sleep_for(10000s);
+			if(t_mut.try_lock_until(chrono::steady_clock::now()+1s))
+			{
+				/* 
+					上面的可以替换为：try_lock_for(1s).
+				recursive_mutex不同于独占互斥量mutex：允许多次锁定
+					其实下面的2次锁定都是没有必要的。
+				*/
+				lock_guard<recursive_mutex>tempmut(r_mut);
+				lock_guard<recursive_mutex>tempmut2(r_mut);
+
+				lst.push_back(i);
+
+				t_mut.unlock();
+			}
+			else
+			{
+				cout << "添加：锁定失败" << endl;
+			}
+
+		}
+	};
+	bool  dealout(int& command) {
+		
+		/*
+		等待若干时间
+		满足就返回true（已上锁）
+		不满足就返回false（未上锁）*/
+		if (t_mut.try_lock_for(3s)) {
+			
+			if (!lst.empty()) {
+
+				command = lst.front();
+				lst.pop_front();
+
+				t_mut.unlock(); //return之前要解锁
+
+				return true;
+			}
+
+			t_mut.unlock();	//if不满足也要解锁
+		}		
+		return false;
+
+	}
+	void outlist() {
+		for (int i = 0; i < 1000000; i++)
+		{
+			int command = 0;
+			bool flag = dealout(command);//此处传引用，command值被修改。
+
+			if (flag) {
+				cout << "取出执行请求：" << command << endl;
+			}
+			else {
+				cout << "取出：空或取锁失败...."<< endl;
+			}
+		}
+	}
+	
+private:
+	list<int>lst;
+	recursive_mutex r_mut;//可以多次上锁
+
+	timed_mutex t_mut;
+
+};
+
+
+int main()
+{
+	cout << "主线程" << endl;
+
+	server sv;
+	thread inputthread(&server::inlist, &sv);	//此处传引用避免操作不到sv
+	thread outputthread(&server::outlist, &sv);
+
+	inputthread.join();
+	outputthread.join();
+
+
+	cout << "主程序完毕！！！";//最后执行这句
+	return 0;
+}

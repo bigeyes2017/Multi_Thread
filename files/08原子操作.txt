@@ -1,0 +1,103 @@
+//原子操作：
+一般用于：计数++，--，+=，
+支持：&=，^=,|=;
+
+//原子操作：读和写进程***************************
+#include <iostream>
+#include<thread>
+#include<future>
+//#include<mutex>
+using namespace std;
+
+atomic <bool> flag = true;
+void myPrint() {
+
+	chrono::milliseconds dur(1000);
+	while (flag) {
+		cout << this_thread::get_id()<< "运行中........."  << endl;
+		this_thread::sleep_for(dur);
+	}
+
+	cout << this_thread::get_id() << "运行结束<<<" << endl;
+}
+
+int main()
+{
+	cout << "主线程" << this_thread::get_id() << endl;
+
+	thread thr(myPrint);
+	thread thr2(myPrint);
+
+	this_thread::sleep_for(chrono::seconds(5));
+	flag = false;
+
+	thr.join();
+	thr2.join();
+
+	cout << "主线程结束" << this_thread::get_id() << endl;
+
+	return 0;
+}
+
+//输出窗口******************
+主线程6196
+17344运行中.........
+7276运行中.........
+173447276运行中.........
+运行中.........
+7276运行中.........
+17344运行中.........
+7276运行中.........
+17344运行中.........
+7276运行中.........
+17344运行中.........
+7276运行结束<<<
+17344运行结束<<<
+主线程结束6196
+
+//原子操作：两个进程同时写*******************
+
+#include <iostream>
+#include<thread>
+#include<future>
+#include<mutex>
+using namespace std;
+
+atomic <int> num = 0;
+void myPrint() {
+
+	cout << "-----我的线程开始-----" << this_thread::get_id() << endl;
+
+	for (int i = 0; i < 10000000; i++)
+	{
+		num++;
+	}
+
+	cout << "-----我的线程结束-----" << this_thread::get_id() << endl;	
+}
+
+int main()
+{
+	cout << "主线程" << this_thread::get_id() << endl;
+
+	thread thr(myPrint);
+	thread thr2(myPrint);
+
+	thr.join();
+	thr2.join();
+
+	cout << "结果为" <<num<< endl;
+	cout << "主线程结束" << this_thread::get_id() << endl;
+
+	return 0;
+}
+
+
+输出窗口*************************
+主线程8552
+-----我的线程开始-----7484
+-----我的线程开始-----32
+-----我的线程结束-----32
+-----我的线程结束-----7484
+结果为20000000
+主线程结束8552

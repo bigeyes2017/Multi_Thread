@@ -1,0 +1,226 @@
+//子线程访问:互斥的替代**************
+//callonce在《mutex》中
+#include <iostream>
+#include<thread>
+#include<mutex>//call_once也在其中
+using namespace std;
+
+
+once_flag gflag;//标记
+class Single {
+
+private:
+	Single(){}
+	static Single * m_instance;
+	static void createInstance() {
+		m_instance = new Single();
+		static M_delete m;
+		cout << this_thread::get_id() << "线程m_instance已创建" << endl;
+	}
+
+public:	
+	static Single* getInstance() {
+		//每次只能有一个线程进入
+		call_once(gflag, createInstance);
+
+		return m_instance;
+	}
+				class M_delete
+				{
+					public:
+						~M_delete() {
+							if (Single::m_instance) {
+								delete Single::m_instance;
+								Single::m_instance = NULL;
+								cout << "m_instance已删除" << endl;
+							}
+						}
+				};
+	void test() {
+		cout <<"单例的建立、使用及删除" << endl;
+	}
+};
+Single* Single::m_instance;
+
+void mythread() {
+	cout << this_thread::get_id() << "线程开始" << endl;
+	Single* a = Single::getInstance();	//需要互斥访问
+	////Single::createInstance();
+	cout << this_thread::get_id() << "线程结束" << endl;
+}
+
+int main()
+{
+	cout << "主线程" << endl;	
+
+	//具有相同入口函数的两个线程
+	thread mytobj(mythread);
+	thread mytobj2(mythread);
+
+	mytobj.join();
+	mytobj2.join();
+
+	cout << "主程序完毕！！！\n";//最后执行这句
+	return 0;
+}
+
+
+输出窗口：***********
+主线程
+867217336线程开始
+线程开始
+17336线程m_instance已创建
+17336线程结束
+8672线程结束
+主程序完毕！！！
+m_instance已删除
+
+
+多个子线程创建：互斥访问**************
+
+#include <iostream>
+#include<thread>
+#include<mutex>
+using namespace std;
+
+
+mutex mut;
+class Single {
+
+private:
+	Single(){}
+	static Single * m_instance;
+
+public:
+	static Single* getInstance() {
+		if (m_instance == NULL) {
+			/*双层锁定
+			unique必须包裹整个if，否则可能一个线程判断不满足了，正准备新建，结果被打断。下一个又新建一次
+			然而会导致最后一条语句也被包括，这就降低了效率。所以再加一层作用域。（完）
+			或者：
+			if (m_instance != NULL)说明一定是new过了。
+			反之则不一定，即
+			if (m_instance == NULL) 不一定没被new过。
+			所以，unique必须在第二层if之前，使其原子执行。
+
+			*/
+			unique_lock<mutex>ulock(mut);
+			if (m_instance == NULL) {
+				m_instance = new Single();
+				static M_delete m;
+			}
+		}
+		return m_instance;
+	}
+				class M_delete
+				{
+					public:
+						~M_delete() {
+							if (Single::m_instance) {
+								delete Single::m_instance;
+								Single::m_instance = NULL;
+								cout << "m_instance已删除" << endl;
+							}
+						}
+				};
+	void test() {
+		cout <<"单例的建立、使用及删除" << endl;
+	}
+};
+Single* Single::m_instance;
+
+void mythread() {
+	cout << this_thread::get_id() << "线程开始" << endl;
+	Single* a = Single::getInstance();	//需要互斥访问
+	
+	cout << this_thread::get_id() << "线程结束" << endl;
+}
+
+int main()
+{
+	cout << "主线程" << endl;	
+
+	//具有相同入口函数的两个线程
+	thread mytobj(mythread);
+	thread mytobj2(mythread);
+
+	mytobj.join();
+	mytobj2.join();
+
+	cout << "主程序完毕！！！\n";//最后执行这句
+	return 0;
+}
+
+
+
+
+
+输出窗口：**************
+主线程
+15716线程开始14640
+线程开始15716
+线程结束14640线程结束
+
+主程序完毕！！！
+m_instance已删除
+
+
+
+
+
+//一般情况：主线程中创建单例****************
+#include <iostream>
+#include<thread>
+#include<mutex>
+using namespace std;
+
+class Single {
+
+private:
+	Single(){}
+	static Single * m_instance;
+
+public:
+	static Single* getInstance() {
+		if (m_instance == NULL) {
+			m_instance = new Single();
+			static M_delete m;	//利用静态函数的生命周期删除m_instance
+		}
+		return m_instance;
+	}
+				class M_delete
+				{
+					public:
+						~M_delete() {
+							if (Single::m_instance) {
+								delete Single::m_instance;
+								Single::m_instance = NULL;
+								cout << "m_instance已删除" << endl;
+							}
+						}
+				};
+	void test() {
+		cout << "单例的建立、使用及删除" << endl;
+	}
+};
+Single* Single::m_instance;
+
+int main()
+{
+	cout << "主线程" << endl;	
+
+	Single* p_a = Single::getInstance();
+	p_a->test();
+	/*一般情况下在主线程创建单例对象、添加数据即可。子线程只读*/
+
+
+	cout << "主程序完毕！！！\n";//最后执行这句
+	return 0;
+}
+
+
+输出窗口：***********
+主线程
+单例的建立、使用及删除
+主程序完毕！！！
+m_instance已删除

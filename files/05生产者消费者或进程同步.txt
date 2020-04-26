@@ -1,0 +1,80 @@
+//使用让权等待，协调生产者、消费者进程。
+#include <iostream>
+#include<thread>
+#include<list>//list顺序操作较vector快
+#include<mutex>
+using namespace std;
+
+class server {
+public:
+	void inlist() {
+		for (int i = 0; i < 1000000; i++)
+		{
+			cout << "1添加一条请求到list：" << i << "线程id：" << this_thread::get_id() << endl;
+
+			{
+				unique_lock<mutex>tempmut(mut);
+				lst.push_back(i);
+
+				my_cond.notify_one();
+			}
+
+		}
+	};
+
+	void outlist() {
+		for (int i = 0; i < 1000000; i++)
+		{
+			while (true)
+			{
+				unique_lock<mutex>ulock(mut);
+
+				/*
+				若lambda表达式为true，可直接执行下一步。
+				否则，让权等待，即：
+				等待notifyone，先需要获取锁。
+				还要lambda（若有）同时满足，才会继续执行；
+				
+				*/
+				my_cond.wait(ulock, 
+					[this]{
+						if (!lst.empty())return true;
+						return false;
+					}
+				);
+
+				int command = lst.front();
+				lst.pop_front();
+
+				ulock.unlock();
+
+				cout << "执行：" << command << "线程id：" << this_thread::get_id() << endl;
+			}
+
+		}
+	}
+private:
+	list<int>lst;
+	mutex mut;
+	condition_variable my_cond;
+};
+
+
+int main()
+{
+	cout << "主线程" << endl;
+
+	server sv;
+	thread inputthread(&server::inlist, &sv);	//此处传引用避免操作不到sv
+	thread outputthread(&server::outlist, &sv);
+
+	inputthread.join();
+	outputthread.join();
+
+
+	cout << "主程序完毕！！！";//最后执行这句
+	return 0;
+}
+
+//输出窗口：
+样例见03-02

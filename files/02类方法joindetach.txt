@@ -1,0 +1,221 @@
+//类成员函数作为线程入口；1,2,3次构造函数使用时机捕捉******************
+#include <iostream>
+#include<thread>
+#include<string>
+using namespace std;
+
+class A {
+public:
+	int m_i;	
+	
+
+	//这个其实是类型转换函数:int->A
+	A(int i) :m_i(i) {
+		cout << "A构造函数被执行]"
+			<< this << "\n线程id" << this_thread::get_id() << endl;
+	}
+	A(const A& a) :m_i(a.m_i) {
+		cout << "A拷贝构造函数被执行]"
+			<< this << "\n线程id" << this_thread::get_id() << endl;
+	}
+
+	~A() {
+		cout << "~A析构函数被执行]"
+			<< this << "\n线程id" << this_thread::get_id() << endl;
+	}
+
+	//类对象作为线程参数
+	void operator()(int num) {
+		cout<< num << ">>>()被执行]"	<< this
+			<< "\n线程id" << this_thread::get_id() << endl;
+	}
+
+	//类成员函数作为线程参数
+	void thread_work(int num) {
+		cout <<num<<">>>成员函数thread_work被执行" << this
+			<< "线程id:" << this_thread::get_id() << endl;
+	}
+};
+
+void printA(A& a) {
+	//若&去掉，第三次一定是在子线程中
+	//除非真正传引用，否则函数要+const
+
+	a.m_i = 100;
+	cout << "输出函数：\n参数:" << &a
+		<< "线程id:" << this_thread::get_id() << endl;
+
+	/*若不想仅改子线程中的m_i值。
+不传引用，那么是拷贝构造函数，函数中有const。
+此时如果要，应该加上mutable关键字*/
+}
+
+
+int main()
+{
+	cout << "主线程开始" << endl;
+
+	cout << "主线程id" << this_thread::get_id() << endl;
+	int i = 50;
+
+	//thread test(printA, i);	//在子线程中构造，join就无所谓。一次
+	//test.join();
+
+	//thread test(printA, A(i));	//在主线程中构造。detach建议。两次，还可能三次（无&）。
+	//test.detach();
+
+	//A a(i);
+	//thread test(printA, std::ref(a));	//std::ref()用来传真正的引用：进程间
+	//test.detach();
+	//cout << "Main线程中m_i值" << a.m_i<<endl;
+
+	A a(i);
+	thread mytObj(a, 15);
+	mytObj.join();
+
+	thread mytObj2(&A::thread_work, &a, 25);/*此处&与ref等价，但也只有join才能用*/
+	mytObj2.join();
+
+
+	//这个循环是为了detach()时，拖住主线程，显示全貌
+	/*while(i--)
+		cout<<" "<< endl;
+	cout << "主程序完毕！！！";*/
+
+	return 0;
+}
+
+>>>>注释后输出窗口：
+主线程开始
+主线程id8212
+A构造函数被执行]0073FCBC
+线程id8212
+A拷贝构造函数被执行]0080EE8C
+线程id8212
+15>>>()被执行]0080EE8C
+线程id2944
+~A析构函数被执行]0080EE8C
+线程id2944
+25>>>成员函数thread_work被执行0073FCBC线程id:6468
+~A析构函数被执行]0073FCBC
+线程id8212
+
+
+
+
+//detach()时传参：类对象避免隐式类型转换，尽量用引用来接********************
+#include <iostream>
+#include<thread>
+#include<string>
+using namespace std;
+
+void myPrint(const int i, const string& chs) {//detach()时不能再传char*了，会野指针
+
+	cout << "------我的线程开始-----" << endl;
+	/*
+	①如果是int，double等简单类型，建议直接传值。
+	②如果传递class对象，避免隐式类型转换，
+	建议在创建进程那一行构造出临时对象来，
+	然后在函数参数里，用引用来接。避免调用三次构造函数。
+	*/
+	cout << i << endl;		//根据内存地址不同，此处其实是复制了一份
+	cout << chs << endl;	//此处是依赖于main线程传参，若是detach了，就会出问题。
+	cout << "-----我的线程结束-----" << endl;
+}
+
+class A {
+public:
+	int m_i;
+	//这个其实是类型转换函数:int->A
+	A(int i) :m_i(i) { cout << "[A::A(int)构造函数被执行]" 
+		<< this << endl; }
+	A(const A & a) :m_i(a.m_i) { cout << "[A::A(const A &)拷贝构造函数被执行]" 
+		<< this << endl; }
+
+	~A(){ cout << "[A::~A()析构函数被执行]" 
+		<< this << endl; }
+};
+void printA(const A& a) {
+	/*
+	②避免隐式类型转换，
+	用引用来接，避免调用三次构造函数。*/
+	cout << "--------TEST A-------" << endl;
+}
+
+
+int main()
+{
+	cout << "主线程开始" << endl;
+
+	int i = 50;
+	int& j = i;
+	char chs[] = "This is a test";
+	thread mytObj(myPrint,i,string(chs));
+//这里若不构造临时变量（其实是构造函数）
+//那么main()结束之后，才会：char*->string.
+//而此时chs*已被回收
+//加了，则会提前到立即。
+	
+	mytObj.detach();	//这里是detach();	
+
+
+//	验证：类型转换的时机:如果main函数都结束了，类型转换（构造函数）还未进行，那就很糟糕
+//	因为i被释放了
+	thread test(printA, A(i));	//换为A(i)
+	test.detach();
+
+
+	//这个循环是为了拖住主线程，显示程序执行全貌
+	/*while(i--)
+		cout << "主" << endl;
+	cout << "主程序完毕！！！";*/
+
+    return 0;
+}
+
+
+
+
+	
+//join时传参：引用、指针是安全的*********************************
+#include <iostream>
+#include<thread>
+using namespace std;
+
+
+void myPrint(const int& i, char* chs) {
+
+	cout << "------我的线程开始-----" << endl;
+	/*
+建议int等类型，不要传引用
+
+	*/
+	cout << i << endl;		//根据内存地址不同，此处其实是复制了一份
+	cout << chs << endl;	//此处是依赖于main线程传参，若是detach了，就会出问题。
+	cout << "-----我的线程结束-----" << endl;
+}
+
+int main()
+{
+	cout << "主线程开始" << endl;
+
+	int i = 29;
+	int& j = i;
+	char chs[] = "This is a test";
+	thread mytObj(myPrint,i,chs);
+
+	
+	mytObj.join();	//这里是join		
+
+	cout << "主线程完毕,并收尾！！" << endl;
+
+    return 0;
+}
+
+输出窗口：
+主线程开始
+------我的线程开始-----
+29
+This is a test
+-----我的线程结束-----
+主线程完毕,并收尾！！
