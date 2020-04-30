@@ -1,0 +1,45 @@
+#include <iostream>
+#include<thread>
+#include<string>
+#include "MultiThreads.h"	
+//编译不通过，所以这里挂上。但不用
+using namespace std;
+
+
+class A {
+public:
+	int *m_i =  NULL;
+
+	//类对象作为线程参数
+	void operator()() {
+		cout << *m_i << ">>>()被执行]" << this
+			<< "\n线程id" << this_thread::get_id() << endl;
+	}
+
+
+};
+
+
+
+int main()
+{
+	cout << "主线程开始" << endl;
+
+	cout << "主线程id" << this_thread::get_id() << endl;
+	int i = 50;
+
+
+	A a;
+
+	a.m_i = new int(10);
+
+	thread mytObj(ref(a));
+//！！！！如果没有复制构造函数，必须加上ref
+
+	mytObj.join();
+
+
+	cout << "主程序完毕！！！";
+
+	return 0;
+}

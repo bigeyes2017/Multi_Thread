@@ -1,0 +1,41 @@
+#pragma once
+#include <Winsock.h>
+#pragma comment(lib,"ws2_32.lib")
+#include <stdlib.h>
+#include <string>
+#include <vector>
+#include<mutex>
+//#include<future>
+#include <iostream>
+using namespace std;
+typedef vector<thread>  Vt;
+/*
+typedef struct fd_set {
+ u_int   fd_count;
+SOCKET  fd_array[FD_SETSIZE]; 
+} fd_set; 
+*/
+class SockArray{
+private:
+    bool gono = true;
+    fd_set  allsocks;
+    SOCKET  server;
+    mutex mut;
+
+public:
+    SockArray(const SOCKET& s) {
+        server = s;
+        FD_ZERO(&allsocks);
+        FD_SET(s, &allsocks);
+    }
+
+    void dealAcceptRecv(Vt& myTs);      //分配子线程，有写入
+    void dealA();
+    void insertClient(SOCKET s);
+    
+    void dealR(SOCKET s);
+
+    void dealSend(int n);    //仅是读出
+    void closeSock();
+
+};
